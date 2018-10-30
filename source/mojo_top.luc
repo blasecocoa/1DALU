@@ -1,0 +1,153 @@
+module mojo_top (
+    input clk,              // 50MHz clock
+    input rst_n,            // reset button (active low)
+    //output led [8],         // 8 user controllable LEDs
+    input cclk,             // configuration clock, AVR ready when high  
+    input spi_ss,           // AVR SPI Slave Select
+    input spi_mosi,         // AVR SPI MOSI
+    input spi_sck,          // AVR SPI Clock
+    input avr_tx,           // AVR TX (FPGA RX)
+    input avr_rx_busy,      // AVR RX buffer full
+    output io_led [3][8],   // LEDs on IO Shield
+    input io_button [5],    // 5 buttons on IO Shield
+    input io_dip [3][8],     // DIP switches on IO Shield
+    output io_seg[8],         // output to io segment
+    output io_sel[4]         // output to select io segment
+    
+  ) {
+  
+  sig rst;                  // reset signal
+  
+  .clk(clk) {
+    // The reset conditioner is used to synchronize the reset signal to the FPGA
+    // clock. This ensures the entire FPGA comes out of reset at the same time.
+    reset_conditioner reset_cond;
+    .rst(rst){
+      auto_test auto_test;
+      generator generator;
+      
+      fsm state = {SAVE_A, SAVE_B, COMPUTE};
+    }
+  }
+  // Segment counter to cycle through the different segments
+  dff seg_counter[20](.clk(clk), .rst(rst));
+  alu alu;
+
+
+  always {
+    reset_cond.in = ~rst_n;   // input raw inverted reset signal
+    rst = reset_cond.out;     // conditioned reset
+    
+    
+    // Toggle Manual or Auto-Testing mode
+    if (io_dip[0][6]==1){
+      alu.alufn=io_dip[0];
+      alu.a = d0;
+      alu.b = d0;
+      io_led[1] = io_dip[1];
+      io_led[2] = io_dip[2];
+      // connect the DIP switches to the LEDs
+
+      // Toggle Display of LED on IO Shield
+      
+      
+      
+      case(state.q) {
+        state.SAVE_A:
+            if(io_button[3]){
+            io_led[1] = io_dip[1];
+            io_led[2] = io_dip[2];
+            alu.a = c{io_dip[2], io_dip[1]};
+            
+          state.d = state.SAVE_B;
+        
+            }
+        state.SAVE_B:
+          if(io_button[4]){
+          io_led[1] = io_dip[1];
+          io_led[2] = io_dip[2];
+          alu.b = c{io_dip[2], io_dip[1]};
+            
+          state.d = state.COMPUTE;
+          }
+        state.COMPUTE:
+          if(io_button[1]){
+          io_led[2] =alu.out[15:8];
+          io_led[1]= alu.out[7:0];
+          }
+      }
+      
+    }
+      
+      
+      
+       else {
+      alu.alufn=io_dip[0];
+      alu.a = d0;
+      alu.b = d0;
+      io_led[1] = io_dip[1];
+      io_led[2] = io_dip[2];
+      // connect t
+      // Gets generated input a/b/alufn from generator module, and pass to alu module
+      
+      
+            case(state.q) {
+        state.SAVE_A:
+            io_led[2] = generator.a[15:8];
+            io_led[1] = generator.a[7:0];
+            alu.alufn=generator.alufn;
+            
+          state.d = state.SAVE_B;
+        
+            
+        state.SAVE_B:
+            io_led[2] = generator.b[15:8];
+            io_led[1] = generator.b[7:0];
+            alu.alufn=generator.alufn;
+            
+          state.d = state.COMPUTE;
+          
+        state.COMPUTE:
+            io_led[2] =alu.out[15:8];
+            io_led[1]= alu.out[7:0];
+      }
+      
+      
+    }
+    
+    
+    
+    // Puting output values into auto test to check if it is an error.
+    auto_test.alu_output = alu.out; 
+    auto_test.testcase = generator.testcase;
+    // Indicate wrong output on seven segment
+    if (io_dip[0][6]==0 && auto_test.wrong_output==1) {
+      if(seg_counter.q<20b01000000000000000000){
+          // 3rd segment, 'E'
+          io_sel = ~4b0100;
+          io_seg = ~8b01111001;        
+      }
+      else if (seg_counter.q<20b10000000000000000000){
+          // 2nd segment, 'R'
+          io_sel = ~4b0010;
+          io_seg = ~8b00110001;        
+
+      }
+      else if (seg_counter.q<20b11000000000000000000){
+          // 1st segment, 'R'
+          io_sel = ~4b0001;
+          io_seg = ~8b00110001;        
+
+      } else {
+          // 4th segment, blank
+          io_sel = ~4b1000;
+          io_seg = ~8b00000000;      
+      }
+    }  else {
+      // Turn off io segment if not auto-testing or no error
+      io_sel = 0;
+      io_seg = ~8b0;
+    }
+    seg_counter.d = seg_counter.q+1;
+  }
+}

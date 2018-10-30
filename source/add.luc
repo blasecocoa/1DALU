@@ -1,0 +1,26 @@
+module add (
+    input a[16],
+    input b[16],
+    input alufn[6],
+    output out[16]
+  ) {
+
+   //Adds(000000), Subtracts(000001) or Multiplies(000010)
+  always {
+    case (alufn[1-:2]){
+      // Addition
+      2b00:
+        out = a+b;
+      // Subtraction
+      2b01:
+        out = a-b;
+      // Multiplication
+      2b10:
+        out = a*b;
+      // Default
+      default:
+        out = 16b0;
+      }
+  }
+  
+}
